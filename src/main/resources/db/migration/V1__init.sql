@@ -1,0 +1,13 @@
+create table if not exists jobs
+(
+    id                 bigint not null primary key auto_increment unique,
+    position_name      varchar(500),
+    url                varchar(500),
+    logo_link          varchar(500),
+    organization_title varchar(500),
+    labor_function     varchar(500),
+    location           varchar(500),
+    posted_date        bigint,
+    description        TEXT,
+    tags_names         varchar(5000)
+)
