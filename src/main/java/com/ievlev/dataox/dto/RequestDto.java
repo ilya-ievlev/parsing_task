@@ -4,11 +4,14 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.extern.jackson.Jacksonized;
 
+import java.util.List;
+
 @Jacksonized
 @Builder
 @Data
 public class RequestDto {
     private String workFunction;
+//    private List<String> workFunctions;
     // TODO: 22-Jan-24 узнать что значит work functions, job categories, в чем разница
     private String jobLocation; // TODO: 22-Jan-24 хорошо ли делать нулом если фильтрация по локации не нужна?
     private Long postingDate; // TODO: 22-Jan-24 тот же принцип с нулом, но вопрос в каком формате принимать от пользователя дату? и если он передаст в неправильном то кидать исключение

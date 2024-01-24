@@ -18,8 +18,11 @@ public class Job {
     @Column(name = "position_name")
     private String positionName;
 
-    @Column(name = "url")
-    private String url;
+    @Column(name = "job_page_url")
+    private String jobPageUrl;
+
+    @Column(name = "organization_url")
+    private String organizationUrl;
 
     @Column(name = "logo_link")
     private String logoLink;
@@ -42,31 +45,40 @@ public class Job {
     @Column(name = "tags_names")
     private String tagNames;
 
-    public Job(Long id, String positionName, String url, String logoLink, String organizationTitle, String laborFunction, String location, long postedDate, String description, String tagNames) {
-        this.id = id;
-        this.positionName = positionName;
-        this.url = url;
-        this.logoLink = logoLink;
-        this.organizationTitle = organizationTitle;
-        this.laborFunction = laborFunction;
-        this.location = location;
-        this.postedDate = postedDate;
-        this.description = description;
-        this.tagNames = tagNames;
-    }
-
-    public Job(String positionName, String url, String logoLink, String organizationTitle, String laborFunction, String location, long postedDate, String description, String tagNames) {
-        this.positionName = positionName;
-        this.url = url;
-        this.logoLink = logoLink;
-        this.organizationTitle = organizationTitle;
-        this.laborFunction = laborFunction;
-        this.location = location;
-        this.postedDate = postedDate;
-        this.description = description;
-        this.tagNames = tagNames;
-    }
+    @Column(name = "vacancy_id_from_site")
+    private String vacancyIdFromSite;
 
     public Job() {
+    }
+
+    public Job(Long id, String positionName, String jobPageUrl, String organizationUrl, String logoLink,
+               String organizationTitle, String laborFunction, String location, long postedDate, String description, String tagNames, String vacancyIdFromSite) {
+        this.id = id;
+        this.positionName = positionName;
+        this.jobPageUrl = jobPageUrl;
+        this.organizationUrl = organizationUrl;
+        this.logoLink = logoLink;
+        this.organizationTitle = organizationTitle;
+        this.laborFunction = laborFunction;
+        this.location = location;
+        this.postedDate = postedDate;
+        this.description = description;
+        this.tagNames = tagNames;
+        this.vacancyIdFromSite = vacancyIdFromSite;
+    }
+
+    public Job(String positionName, String jobPageUrl, String organizationUrl, String logoLink, String organizationTitle, String laborFunction, String location,
+               long postedDate, String description, String tagNames, String vacancyIdFromSite) {
+        this.positionName = positionName;
+        this.jobPageUrl = jobPageUrl;
+        this.organizationUrl = organizationUrl;
+        this.logoLink = logoLink;
+        this.organizationTitle = organizationTitle;
+        this.laborFunction = laborFunction;
+        this.location = location;
+        this.postedDate = postedDate;
+        this.description = description;
+        this.tagNames = tagNames;
+        this.vacancyIdFromSite = vacancyIdFromSite;
     }
 }
