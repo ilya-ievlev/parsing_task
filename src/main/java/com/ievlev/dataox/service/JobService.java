@@ -22,7 +22,8 @@ import java.util.List;
 @Service
 @RequiredArgsConstructor
 public class JobService {
-    private JobRepository jobRepository;
+    private final JobRepository jobRepository;
+
 
     // TODO: 24-Jan-24 обязательно добавить еще запрос на сортировку по локации и возможность указывать несколько локаций и несколько джоб функций в запросе
     // TODO: 24-Jan-24 возможно добавить сортировку по конкретной дате, но это уже будет выполняться в моей базе, а не на сайте
@@ -35,6 +36,7 @@ public class JobService {
         createJobs(searchResultsWrapper);
     }
 
+    // TODO: 24-Jan-24 добавить проходку по всем страницам пагинации если нужно
     private SearchResultsWrapper getResultsFromExternalApi(RequestDto requestDto) {
         RestTemplate restTemplate = new RestTemplate();
         String baseUrl = "https://jobs.techstars.com/api/search/jobs";
@@ -58,7 +60,6 @@ public class JobService {
             Job job = new Job();
             job.setPositionName(jobHit.getTitle());
             job.setOrganizationUrl(getUrlToOrganization(jobHit));// TODO: 23-Jan-24 not correct, тут должна быть ссылки из под кнопки apply
-//            job.setJobPageUrl(jobHit.getUrl());
             job.setJobPageUrl("https://jobs.techstars.com/companies/playerdata/jobs/" + jobHit.getSlug()); // TODO: 23-Jan-24 проверить, должно возвращать вакансию именно на исходном сайте, даже и без описания, но не на внешнем
             job.setLogoLink(jobHit.getOrganization().getLogo_url());
             job.setOrganizationTitle(jobHit.getOrganization().getName());
@@ -68,7 +69,7 @@ public class JobService {
             job.setDescription(getDescription(jobHit));
             job.setTagNames(getTagsFromJobHit(jobHit));
             job.setVacancyIdFromSite(jobHit.getObjectID());
-
+            // TODO: 24-Jan-24 проверить чтобы добавлялись только уникальные джобы с уникальными айдишниками с сайта
             jobRepository.save(job);
         }
 
@@ -76,33 +77,49 @@ public class JobService {
     }
 
     private String getTagsFromJobHit(JobHit jobHit) {
-
         int numberOfPeopleShort = jobHit.getOrganization().getHead_count();
+        String stage = jobHit.getOrganization().getStage();
+        List<String> industryTags = jobHit.getOrganization().getIndustry_tags();
+        if(numberOfPeopleShort==0 & stage==null & industryTags.isEmpty()){
+            return "NOT_FOUND";
+        }
         String numberOfPeopleString;
         switch (numberOfPeopleShort) {
             case 1:
                 numberOfPeopleString = "1 - 10";
+                break;
             case 2:
                 numberOfPeopleString = "11 - 50";
+                break;
             case 3:
                 numberOfPeopleString = "51 - 200";
+                break;
             case 4:
                 numberOfPeopleString = "201 - 1000";
+                break;
             case 5:
                 numberOfPeopleString = "1001 - 5000";
+                break;
             case 6:
                 numberOfPeopleString = "5001+";
+                break;
             default:
-                numberOfPeopleString = "number of people: NOT_FOUND";
-
+                numberOfPeopleString = null;
         }
         StringBuilder resultStringBuilder = new StringBuilder();
-        String stage = jobHit.getOrganization().getStage();
-        List<String> industryTags = jobHit.getOrganization().getIndustry_tags();
-        for (String string : industryTags) {
-            resultStringBuilder.append(string).append(", ");
+        for (int i = 0; i < industryTags.size(); i++) {
+            resultStringBuilder.append(industryTags.get(i));
+            if (industryTags.size() == 1 || i == industryTags.size() - 1) {
+                break;
+            }
+            resultStringBuilder.append(", ");
         }
-        resultStringBuilder.append(numberOfPeopleString).append(", ").append(stage);
+        if (numberOfPeopleString != null) {
+            resultStringBuilder.append(", ").append(numberOfPeopleString);
+        }
+        if (stage != null) {
+            resultStringBuilder.append(", ").append(stage);
+        }
         return resultStringBuilder.toString();
     }
 
@@ -117,7 +134,8 @@ public class JobService {
         } catch (IOException ioException) {
             ioException.printStackTrace(); // TODO: 23-Jan-24 сделать что-то с этим исключением, и еще с парой в других частях кода
         } // TODO: 24-Jan-24 преверить чтобы документ не был нул
-        Elements descriptionElements = document.select("#content > div.sc-beqWaB.eLTiFX > div.sc-dmqHEX.fPtgCq > div > div > div.sc-beqWaB.fmCCHr > div");
+//        Elements descriptionElements = document.select("#content > div.sc-beqWaB.eLTiFX > div.sc-dmqHEX.fPtgCq > div > div > div.sc-beqWaB.fmCCHr > div");
+        Elements descriptionElements = document.select("div[data-testid=careerPage]");
         return descriptionElements.text();// TODO: 23-Jan-24 по заданию нужно сохранить оригинальную разметку. как это сделать?
     } // TODO: 24-Jan-24 возможно не .text() a .html(). он должен хранить и текст, и разметку
 
@@ -129,11 +147,12 @@ public class JobService {
         } catch (IOException ioException) {
             ioException.printStackTrace();
         }
-        Element applyNowButton = document.selectFirst("#content > div.sc-beqWaB.eLTiFX > div.sc-dmqHEX.fPtgCq > div > div > div.sc-beqWaB.sc-gueYoa.MSxNX.MYFxR > div.sc-beqWaB.dqlQzp > a");
+//        Element applyNowButton = document.selectFirst("#content > div.sc-beqWaB.eLTiFX > div.sc-dmqHEX.fPtgCq > div > div > div.sc-beqWaB.sc-gueYoa.MSxNX.MYFxR > div.sc-beqWaB.dqlQzp > a");
+        Element applyNowButton = document.selectFirst("a[data-testid=button]");
         return applyNowButton.attr("href");
     }
 
-    private String getLaborFunction(JobHit jobHit) {
+    private String getLaborFunction(JobHit jobHit) { // TODO: 24-Jan-24 так же прописать что если не найдено тут и на всех полях, даже на названии вакансии
         StringBuilder resultStringBuilder = new StringBuilder();
         List<JobFunctions> jobFunctionsList = jobHit.get_highlightResult().getJob_functions();
 //        for(JobFunctions jobFunctions: jobFunctionsList){
