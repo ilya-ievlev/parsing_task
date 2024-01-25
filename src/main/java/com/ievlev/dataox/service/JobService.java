@@ -4,9 +4,11 @@ import com.ievlev.dataox.dto.RequestDto;
 import com.ievlev.dataox.dto.all_jobs_dto.JobFunctions;
 import com.ievlev.dataox.dto.all_jobs_dto.JobHit;
 import com.ievlev.dataox.dto.all_jobs_dto.SearchResultsWrapper;
+import com.ievlev.dataox.model.GoogleSheetModel;
 import com.ievlev.dataox.model.Job;
 import com.ievlev.dataox.model.TimeLimit;
 import com.ievlev.dataox.repository.JobRepository;
+import com.ievlev.dataox.utils.GoogleApiUtil;
 import lombok.RequiredArgsConstructor;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
@@ -16,6 +18,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
 
+import javax.annotation.PostConstruct;
 import java.io.IOException;
 import java.net.URI;
 import java.text.SimpleDateFormat;
@@ -26,9 +29,19 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 @Service
 @RequiredArgsConstructor
 public class JobService {
+    private final JobRepository jobRepository;
+    private final GoogleApiUtil googleApiUtil;
+    private GoogleSheetModel googleSheetModel;
     private static final String NOT_FOUND = "NOT_FOUND";
     private static final int MILISEC_IN_DAY = 86_400_000;
-    private final JobRepository jobRepository;
+
+
+    @PostConstruct
+    // TODO: 25-Jan-24 узнать у ментора. метод должен выполняться один раз при первом запросе и больше не выполняться
+    public void createGoogleSheet() {
+        googleSheetModel = googleApiUtil.createGoogleSheet();
+    }
+
 
     // TODO: 24-Jan-24 в последнюю очередь сделать лимитер запросов чтобы не ддосить внешний сервер запросами
     // TODO: 24-Jan-24 обязательно добавить еще запрос на сортировку по локации и возможность указывать несколько локаций и несколько джоб функций в запросе
@@ -38,12 +51,12 @@ public class JobService {
         if (firstSearchResultsWrapper.getResults().get(0).getHits().isEmpty()) {
             // TODO: 23-Jan-24 вернуть NOT_FOUND и указать с каким запросом не найдено. или возвращать просто json и кодом ошибки что не найдено, а не писать это в таблицу
         }
-        createJobs(firstSearchResultsWrapper);
+        createJobFromHit(firstSearchResultsWrapper);
         int numberOfPages = firstSearchResultsWrapper.getResults().get(0).getNbPages();
         if (numberOfPages > 1) {
             for (int i = 1; i < numberOfPages; i++) {
                 // TODO: 24-Jan-24 проверять все ли данные сохранились, и что делать с данными которые по какой то причине не сохранились в базу и соответственно в таблицу
-                createJobs(getResultsFromExternalApi(requestDto, i));
+                createJobFromHit(getResultsFromExternalApi(requestDto, i));
             }
         }
     }
@@ -65,7 +78,7 @@ public class JobService {
         return restTemplate.getForObject(uri, SearchResultsWrapper.class);
     }
 
-    // TODO: 25-Jan-24 сюда должны прийти джобы только с инициализированным айди, и уже отсортированные по времени
+
     private ConcurrentLinkedQueue<JobHit> checkJobHitByIdInDB(List<JobHit> jobList) {
         ConcurrentLinkedQueue<JobHit> jobConcurrentLinkedQueue = new ConcurrentLinkedQueue<>();
         for (JobHit job : jobList) {
@@ -135,7 +148,7 @@ public class JobService {
     }
 
     // TODO: 24-Jan-24 возможно этот метод распаралелить (узнать насчет можно ли паралелить запись в базу, или собирать все в лист, и потом пачкой записывать в базу)
-    private void createJobs(SearchResultsWrapper searchResultsWrapper) {
+    private void createJobFromHit(SearchResultsWrapper searchResultsWrapper) { // TODO: 25-Jan-24 мы не будем на прямую из врапера делать джобы. хиты сначала надо обработать 
         List<JobHit> jobs = searchResultsWrapper.getResults().get(0).getHits();
         for (JobHit jobHit : jobs) { // TODO: 23-Jan-24 вот это можно и распаралелить, чтобы ходить на внешние ресурсы и заполнять джобы для сохранения в базу
             Job job = new Job();
@@ -151,12 +164,13 @@ public class JobService {
             job.setTagNames(getTagsFromJobHit(jobHit));
             job.setVacancyIdFromSite(Long.parseLong(jobHit.getObjectID())); // TODO: 25-Jan-24 а что будет если тут парсед ексепшен вылетит
             // TODO: 24-Jan-24 проверить чтобы добавлялись только уникальные джобы с уникальными айдишниками с сайта
-            jobRepository.save(job); // TODO: 24-Jan-24 это не тут делать, нужно сначала делать проверку не существует ли уже такой джобы, потом пытаться сохранить в базу и таблизу. проверить сохранилось ли в таблице и базе, если одно не сохранилось то удалить второе и сказать об этом пользователю исключением или написать в json ответе
+//            jobRepository.save(job); // TODO: 24-Jan-24 это не тут делать, нужно сначала делать проверку не существует ли уже такой джобы, потом пытаться сохранить в базу и таблизу. проверить сохранилось ли в таблице и базе, если одно не сохранилось то удалить второе и сказать об этом пользователю исключением или написать в json ответе
         }
     }
 
-    private void saveJobToDBAndSheets(Job job) {
-
+    private void saveJobToDatabaseAndSheets(Job job, int numberOfRawToSave) { // TODO: 25-Jan-24 а если одно что-то не вставится, то как откатить или остановить процесс?
+        jobRepository.save(job);
+        googleApiUtil.addJobToSheet(job, numberOfRawToSave, googleSheetModel);
     }
 
     private String getLogoUrl(JobHit jobHit) {

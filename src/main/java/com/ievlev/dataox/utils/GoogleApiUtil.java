@@ -12,31 +12,33 @@ import com.google.api.client.json.gson.GsonFactory;
 import com.google.api.client.util.store.FileDataStoreFactory;
 import com.google.api.services.sheets.v4.Sheets;
 import com.google.api.services.sheets.v4.SheetsScopes;
-import com.google.api.services.sheets.v4.model.Sheet;
-import com.google.api.services.sheets.v4.model.SheetProperties;
-import com.google.api.services.sheets.v4.model.Spreadsheet;
-import com.google.api.services.sheets.v4.model.SpreadsheetProperties;
+import com.google.api.services.sheets.v4.model.*;
+import com.ievlev.dataox.model.GoogleSheetModel;
+import com.ievlev.dataox.model.Job;
 import com.ievlev.dataox.service.SheetsQuickstart;
 
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
+// TODO: 25-Jan-24 наверное переименовать это в сервис (разобраться с иерархией)
 public class GoogleApiUtil {
     private static final String CREDENTIALS_FILE_PATH = "/credentials.json";
     private static final JsonFactory JSON_FACTORY = GsonFactory.getDefaultInstance();
-    private static final List<String> SCOPES =
-            Collections.singletonList(SheetsScopes.SPREADSHEETS);
+    private static final List<String> SCOPES = Arrays.asList(SheetsScopes.SPREADSHEETS, SheetsScopes.DRIVE);
     private static final String TOKENS_DIRECTORY_PATH = "tokens";
-    private static final String APPLICATION_NAME = "Google Sheets API Java Quickstart"; // TODO: 25-Jan-24 изучить на что влияет
+    private static final String APPLICATION_NAME = "Google Sheets API"; // TODO: 25-Jan-24 изучить на что влияет
 
     private static Credential getCredentials(final NetHttpTransport HTTP_TRANSPORT)
             throws IOException {
         // Load client secrets.
-        InputStream in = SheetsQuickstart.class.getResourceAsStream(CREDENTIALS_FILE_PATH);
+        InputStream in = SheetsQuickstart.class.getResourceAsStream(CREDENTIALS_FILE_PATH); // TODO: 25-Jan-24 вот тут прям не факт, разобраться для чего это берется и откуда
+
         if (in == null) {
             throw new FileNotFoundException("Resource not found: " + CREDENTIALS_FILE_PATH);
         }
@@ -60,15 +62,37 @@ public class GoogleApiUtil {
                 .build();
     }
 
-    public String createGoogleSheet(){
+    public GoogleSheetModel createGoogleSheet() {
+        GoogleSheetModel googleSheetModel = new GoogleSheetModel();
         Sheets service = getSheetService();
         SpreadsheetProperties spreadsheetProperties = new SpreadsheetProperties();
         spreadsheetProperties.setTitle("results from scraping");
-
         SheetProperties sheetProperties = new SheetProperties();
         sheetProperties.setTitle("results from scraping");
-        Sheet sheet  = new Sheet().setProperties(sheetProperties);
+        Sheet sheet = new Sheet().setProperties(sheetProperties);
         Spreadsheet spreadsheet = new Spreadsheet().setProperties(spreadsheetProperties).setSheets(Collections.singletonList(sheet));
-        return service.spreadsheets().create(spreadsheet).execute().getSpreadsheetUrl(); // TODO: 25-Jan-24 при первом запросе возвращать ссылку на таблицу с результатами в json ответе, потом просто модифицировать ту же таблицу
+        googleSheetModel.setService(service);
+        googleSheetModel.setUrlToGoogleSheet(service.spreadsheets().create(spreadsheet).execute().getSpreadsheetUrl()); // TODO: 25-Jan-24 с каждым запросом возвращать ссылку в json ответе, потом просто модифицировать ту же таблицу
+        googleSheetModel.setSpreadsheetId(spreadsheet.getSpreadsheetId());
+    }
+
+    public void addJobToSheet(Job job, int numberOfRaw, GoogleSheetModel googleSheetModel) {
+        ValueRange valueRange = new ValueRange().setValues(convertJobToListOfList(job));
+        googleSheetModel.getService().spreadsheets().values()
+                .update(googleSheetModel.getSpreadsheetId(), "A" + numberOfRaw, valueRange)
+                .setValueInputOption("RAW").execute();
+    }
+
+    private List<List<Object>> convertJobToListOfList(Job job) {
+        List<List<Object>> dataToBeInserted = new ArrayList<>();
+        dataToBeInserted.add(Collections.singletonList(job.getJobPageUrl()));
+        dataToBeInserted.add(Collections.singletonList(job.getPositionName()));
+        dataToBeInserted.add(Collections.singletonList(job.getOrganizationUrl()));
+        dataToBeInserted.add(Collections.singletonList(job.getLaborFunction()));
+        dataToBeInserted.add(Collections.singletonList(job.getLocation()));
+        dataToBeInserted.add(Collections.singletonList(String.valueOf(job.getPostedDate())));
+        dataToBeInserted.add(Collections.singletonList(job.getDescription()));
+        dataToBeInserted.add(Collections.singletonList(job.getTagNames()));
+        return dataToBeInserted;
     }
 }
