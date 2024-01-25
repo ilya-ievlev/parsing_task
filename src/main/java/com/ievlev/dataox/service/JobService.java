@@ -4,6 +4,7 @@ import com.ievlev.dataox.dto.RequestDto;
 import com.ievlev.dataox.dto.all_jobs_dto.JobFunctions;
 import com.ievlev.dataox.dto.all_jobs_dto.JobHit;
 import com.ievlev.dataox.dto.all_jobs_dto.SearchResultsWrapper;
+import com.ievlev.dataox.exception.IncorrectConnectionException;
 import com.ievlev.dataox.model.GoogleSheetModel;
 import com.ievlev.dataox.model.Job;
 import com.ievlev.dataox.model.TimeLimit;
@@ -50,6 +51,7 @@ public class JobService {
 
 
     public String processUserRequest(RequestDto requestDto) {
+        validateRequestDto(requestDto);
         SearchResultsWrapper firstSearchResultsWrapper = getResultsFromExternalApi(requestDto, 0);
         ConcurrentLinkedQueue<Job> jobListToWrite = process(firstSearchResultsWrapper, requestDto);
 //        int numberOfPages = firstSearchResultsWrapper.getResults().get(0).getNbPages();
@@ -64,6 +66,12 @@ public class JobService {
             saveJobToDatabaseAndSheets(job, lastRowInSheets);
         }
         return googleSheetModel.getUrlToGoogleSheet();
+    }
+
+    private void validateRequestDto(RequestDto requestDto) {
+        if (requestDto.getDatesToShow() == null || requestDto.getLocations() == null || requestDto.getWorkFunctions() == null) {
+            throw new IllegalArgumentException("request dto must contain all necessary objects");
+        }
     }
 
     private ConcurrentLinkedQueue<Job> process(SearchResultsWrapper searchResultsWrapper, RequestDto requestDto) {
@@ -130,7 +138,7 @@ public class JobService {
             try {
                 parsedDate = dateFormat.parse(str).getTime() / 1000;
             } catch (ParseException e) {
-                e.printStackTrace();
+                throw new IllegalArgumentException("there is something wrong with the date you entered" + e);
             }
             timeLimit.setStart(parsedDate);
             timeLimit.setEnd(parsedDate + SEC_IN_DAY);
@@ -270,7 +278,7 @@ public class JobService {
         try {
             document = Jsoup.connect(url).get();
         } catch (IOException ioException) {
-            ioException.printStackTrace();
+            throw new IncorrectConnectionException(ioException);
         }
         Elements descriptionElements = document.select("div[data-testid=careerPage]");
         if (descriptionElements == null) {
@@ -285,7 +293,7 @@ public class JobService {
         try {
             document = Jsoup.connect(url).get();
         } catch (IOException ioException) {
-            ioException.printStackTrace();
+            throw new IncorrectConnectionException(ioException);
         }
         Element applyNowButton = document.selectFirst("a[data-testid=button]");
         if (applyNowButton == null) {

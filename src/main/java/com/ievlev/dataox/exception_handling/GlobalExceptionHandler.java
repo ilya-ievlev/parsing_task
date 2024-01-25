@@ -1,27 +1,31 @@
 package com.ievlev.dataox.exception_handling;
 
 import com.ievlev.dataox.dto.AppErrorStatusDto;
-import lombok.extern.slf4j.Slf4j;
+import com.ievlev.dataox.exception.GoogleSheetException;
+import com.ievlev.dataox.exception.IncorrectConnectionException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
-import java.io.IOException;
-
 @RestControllerAdvice
 //@Slf4j
 public class GlobalExceptionHandler {
 
-    @ExceptionHandler({IOException.class})
-    public ResponseEntity<?> handleIOException(IOException ioException){
-        return new ResponseEntity<>(new AppErrorStatusDto(HttpStatus.INTERNAL_SERVER_ERROR.value(), ioException.getMessage()), HttpStatus.INTERNAL_SERVER_ERROR);
+    @ExceptionHandler({IllegalArgumentException.class})
+    public ResponseEntity<?> handleIllegalArgumentExcpetion(IllegalArgumentException illegalArgumentException) {
+        return new ResponseEntity<>(new AppErrorStatusDto(HttpStatus.BAD_REQUEST.value(), illegalArgumentException.getMessage()), HttpStatus.BAD_REQUEST);
     }
 
-    @ExceptionHandler({RuntimeException.class})
-    // TODO: 23-Jan-24 возможно удалить если не будет нужно и я придумаю что делать с ioException
-    public ResponseEntity<?> handleRuntimeException(RuntimeException runtimeException){
-        return new ResponseEntity<>(new AppErrorStatusDto(HttpStatus.INTERNAL_SERVER_ERROR.value(), runtimeException.getMessage()), HttpStatus.INTERNAL_SERVER_ERROR);
+    @ExceptionHandler({GoogleSheetException.class})
+    public ResponseEntity<?> handleGoogleSheetException(GoogleSheetException e) {
+        return new ResponseEntity<>(new AppErrorStatusDto(HttpStatus.INTERNAL_SERVER_ERROR.value(), e.getMessage()), HttpStatus.INTERNAL_SERVER_ERROR);
     }
+
+    @ExceptionHandler({IncorrectConnectionException.class})
+    public ResponseEntity<?> handleIncorrectConnectionException(IncorrectConnectionException e) {
+        return new ResponseEntity<>(new AppErrorStatusDto(HttpStatus.INTERNAL_SERVER_ERROR.value(), e.getMessage()), HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+
 
 }

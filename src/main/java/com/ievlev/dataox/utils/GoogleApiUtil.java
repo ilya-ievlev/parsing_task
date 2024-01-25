@@ -13,6 +13,7 @@ import com.google.api.client.util.store.FileDataStoreFactory;
 import com.google.api.services.sheets.v4.Sheets;
 import com.google.api.services.sheets.v4.SheetsScopes;
 import com.google.api.services.sheets.v4.model.*;
+import com.ievlev.dataox.exception.GoogleSheetException;
 import com.ievlev.dataox.model.GoogleSheetModel;
 import com.ievlev.dataox.model.Job;
 import org.springframework.stereotype.Component;
@@ -62,9 +63,8 @@ public class GoogleApiUtil {
                     .setApplicationName(APPLICATION_NAME)
                     .build();
         }catch (GeneralSecurityException | IOException e){
-            e.printStackTrace();
+            throw new GoogleSheetException(e);
         }
-        return null;
     }
 
 
@@ -82,7 +82,7 @@ public class GoogleApiUtil {
         try {
             createdResponse = service.spreadsheets().create(spreadsheet).execute();
         } catch (IOException ioException) {
-            ioException.printStackTrace();
+            throw new GoogleSheetException(ioException);
         }
         googleSheetModel.setUrlToGoogleSheet(createdResponse.getSpreadsheetUrl());
         googleSheetModel.setSpreadsheetId(createdResponse.getSpreadsheetId());
@@ -97,7 +97,7 @@ public class GoogleApiUtil {
                     .update(googleSheetModel.getSpreadsheetId(), "A" + numberOfRaw, valueRange)
                     .setValueInputOption("RAW").execute();
         } catch (IOException ioException) {
-            ioException.printStackTrace();
+            throw new GoogleSheetException(ioException);
         }
     }
 }
