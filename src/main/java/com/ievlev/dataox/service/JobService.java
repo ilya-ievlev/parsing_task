@@ -10,6 +10,7 @@ import com.ievlev.dataox.model.TimeLimit;
 import com.ievlev.dataox.repository.JobRepository;
 import com.ievlev.dataox.utils.GoogleApiUtil;
 import lombok.RequiredArgsConstructor;
+import lombok.SneakyThrows;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
@@ -24,11 +25,11 @@ import java.net.URI;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.ConcurrentLinkedQueue;
 
 @Service
 @RequiredArgsConstructor
 public class JobService {
+    private static final String DATE_PATTERN = "dd-MM-yyyy";
     private final JobRepository jobRepository;
     private final GoogleApiUtil googleApiUtil;
     private GoogleSheetModel googleSheetModel;
@@ -44,24 +45,35 @@ public class JobService {
 
 
     // TODO: 24-Jan-24 в последнюю очередь сделать лимитер запросов чтобы не ддосить внешний сервер запросами
-    // TODO: 24-Jan-24 обязательно добавить еще запрос на сортировку по локации и возможность указывать несколько локаций и несколько джоб функций в запросе
-    // TODO: 24-Jan-24 возможно добавить сортировку по конкретной дате, но это уже будет выполняться в моей базе, а не на сайте
-    public void getJobByJobFunction(RequestDto requestDto) {
+    public String processUserRequest(RequestDto requestDto) {
         SearchResultsWrapper firstSearchResultsWrapper = getResultsFromExternalApi(requestDto, 0);
         if (firstSearchResultsWrapper.getResults().get(0).getHits().isEmpty()) {
             // TODO: 23-Jan-24 вернуть NOT_FOUND и указать с каким запросом не найдено. или возвращать просто json и кодом ошибки что не найдено, а не писать это в таблицу
         }
-        createJobFromHit(firstSearchResultsWrapper);
+        List<Job> jobListToWrite = process(firstSearchResultsWrapper, requestDto);
         int numberOfPages = firstSearchResultsWrapper.getResults().get(0).getNbPages();
         if (numberOfPages > 1) {
             for (int i = 1; i < numberOfPages; i++) {
-                // TODO: 24-Jan-24 проверять все ли данные сохранились, и что делать с данными которые по какой то причине не сохранились в базу и соответственно в таблицу
-                createJobFromHit(getResultsFromExternalApi(requestDto, i));
+                SearchResultsWrapper searchResultsWrapper = getResultsFromExternalApi(requestDto, i);
+                jobListToWrite.addAll(process(searchResultsWrapper, requestDto));
             }
         }
+        for (int i = 0; i < jobListToWrite.size(); i++) {
+            saveJobToDatabaseAndSheets(jobListToWrite.get(i), i + 1);
+        }
+        return googleSheetModel.getUrlToGoogleSheet();
     }
 
-    // TODO: 25-Jan-24 поменять айдишник генерируемый на айдишник вакансии с сайта
+    private List<Job> process(SearchResultsWrapper searchResultsWrapper, RequestDto requestDto) {
+        List<JobHit> hitsSortedByTime = sortJobHitByDatePosted(requestDto, searchResultsWrapper.getResults().get(0).getHits());
+        List<JobHit> hitsCheckedForRepetition = checkJobHitByIdInDB(hitsSortedByTime);
+        List<Job> processedJobsReadyToBeWritten = new ArrayList<>();
+        for (JobHit jobHit : hitsCheckedForRepetition) {// TODO: 25-Jan-24 потом перевести в многопоточность эту операцию
+            processedJobsReadyToBeWritten.add(createJobFromHit(jobHit));
+        }
+        return processedJobsReadyToBeWritten;
+    }
+
     // TODO: 24-Jan-24 сделать 2й вариант отправки запросов через okhttp (они так хотят)
     private SearchResultsWrapper getResultsFromExternalApi(RequestDto requestDto, int numberOfPage) {
         RestTemplate restTemplate = new RestTemplate();
@@ -79,26 +91,29 @@ public class JobService {
     }
 
 
-    private ConcurrentLinkedQueue<JobHit> checkJobHitByIdInDB(List<JobHit> jobList) {
-        ConcurrentLinkedQueue<JobHit> jobConcurrentLinkedQueue = new ConcurrentLinkedQueue<>();
+    private List<JobHit> checkJobHitByIdInDB(List<JobHit> jobList) {
+//        ConcurrentLinkedQueue<JobHit> jobConcurrentLinkedQueue = new ConcurrentLinkedQueue<>();
+        List<JobHit> checkedJobHits = new ArrayList<>();
         for (JobHit job : jobList) {
             if (jobRepository.findById(Long.parseLong(job.getObjectID())).isEmpty()) {
-                jobConcurrentLinkedQueue.add(job); // TODO: 25-Jan-24 потом в эти джобы в многопоточке доставляем все остальное, и потом в однопоточке пишем в базу и таблицу
+//                jobConcurrentLinkedQueue.add(job); // TODO: 25-Jan-24 потом в эти джобы в многопоточке доставляем все остальное, и потом в однопоточке пишем в базу и таблицу
+                checkedJobHits.add(job);
             }
         }
-        return jobConcurrentLinkedQueue;
+        return checkedJobHits;
     }
 
     // TODO: 25-Jan-24 а если передадут например 2 одинаковых значения, и в другие фильтры тоже
+    @SneakyThrows // TODO: 25-Jan-24 ОЧЕНЬ ВРЕМЕННОЕ РЕШЕНИЕ, УБРАТЬ КАК МОЖНО БЫСТРЕЕ
     private List<JobHit> sortJobHitByDatePosted(RequestDto requestDto, List<JobHit> jobList) {
         List<String> requiredDates = requestDto.getDatesToShow();
         if (requiredDates.isEmpty()) {
             return jobList;
         }
-        SimpleDateFormat dateFormat = new SimpleDateFormat("dd-MM-yyyy");
+        SimpleDateFormat dateFormat = new SimpleDateFormat(DATE_PATTERN);
         List<TimeLimit> parsedDatesUnix = new ArrayList<>();
         for (String str : requiredDates) {
-            TimeLimit timeLimit = new TimeLimit();// TODO: 25-Jan-24 смотреть какая вакансия попадает между этих двух переменных
+            TimeLimit timeLimit = new TimeLimit();
             long parsedDate = dateFormat.parse(str).getTime() / 1000;
             timeLimit.setStart(parsedDate);
             timeLimit.setEnd(parsedDate + MILISEC_IN_DAY);
@@ -147,25 +162,20 @@ public class JobService {
         return result.toString();
     }
 
-    // TODO: 24-Jan-24 возможно этот метод распаралелить (узнать насчет можно ли паралелить запись в базу, или собирать все в лист, и потом пачкой записывать в базу)
-    private void createJobFromHit(SearchResultsWrapper searchResultsWrapper) { // TODO: 25-Jan-24 мы не будем на прямую из врапера делать джобы. хиты сначала надо обработать 
-        List<JobHit> jobs = searchResultsWrapper.getResults().get(0).getHits();
-        for (JobHit jobHit : jobs) { // TODO: 23-Jan-24 вот это можно и распаралелить, чтобы ходить на внешние ресурсы и заполнять джобы для сохранения в базу
-            Job job = new Job();
-            job.setPositionName(jobHit.getTitle());
-            job.setOrganizationUrl(getUrlToOrganization(jobHit));// TODO: 23-Jan-24 not correct, тут должна быть ссылки из под кнопки apply
-            job.setJobPageUrl("https://jobs.techstars.com/companies/playerdata/jobs/" + jobHit.getSlug()); // TODO: 23-Jan-24 проверить, должно возвращать вакансию именно на исходном сайте, даже и без описания, но не на внешнем
-            job.setLogoLink(getLogoUrl(jobHit));
-            job.setOrganizationTitle(jobHit.getOrganization().getName());
-            job.setLaborFunction(getLaborFunction(jobHit));
-            job.setLocation(jobHit.getLocations().toString());
-            job.setPostedDate(jobHit.getCreated_at()); //is is already in unix timestamp
-            job.setDescription(getDescription(jobHit));
-            job.setTagNames(getTagsFromJobHit(jobHit));
-            job.setVacancyIdFromSite(Long.parseLong(jobHit.getObjectID())); // TODO: 25-Jan-24 а что будет если тут парсед ексепшен вылетит
-            // TODO: 24-Jan-24 проверить чтобы добавлялись только уникальные джобы с уникальными айдишниками с сайта
-//            jobRepository.save(job); // TODO: 24-Jan-24 это не тут делать, нужно сначала делать проверку не существует ли уже такой джобы, потом пытаться сохранить в базу и таблизу. проверить сохранилось ли в таблице и базе, если одно не сохранилось то удалить второе и сказать об этом пользователю исключением или написать в json ответе
-        }
+    private Job createJobFromHit(JobHit jobHit) {
+        Job job = new Job();// TODO: 23-Jan-24 вот это можно и распаралелить, чтобы ходить на внешние ресурсы и заполнять джобы для сохранения в базу
+        job.setPositionName(jobHit.getTitle());
+        job.setOrganizationUrl(getUrlToOrganization(jobHit));
+        job.setJobPageUrl("https://jobs.techstars.com/companies/playerdata/jobs/" + jobHit.getSlug());
+        job.setLogoLink(getLogoUrl(jobHit));
+        job.setOrganizationTitle(jobHit.getOrganization().getName());
+        job.setLaborFunction(getLaborFunction(jobHit));
+        job.setLocation(jobHit.getLocations().toString());
+        job.setPostedDate(jobHit.getCreated_at()); //is is already in unix timestamp
+        job.setDescription(getDescription(jobHit));
+        job.setTagNames(getTagsFromJobHit(jobHit));
+        job.setVacancyIdFromSite(Long.parseLong(jobHit.getObjectID())); // TODO: 25-Jan-24 а что будет если тут парсед ексепшен вылетит
+        return job;
     }
 
     private void saveJobToDatabaseAndSheets(Job job, int numberOfRawToSave) { // TODO: 25-Jan-24 а если одно что-то не вставится, то как откатить или остановить процесс?

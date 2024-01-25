@@ -13,7 +13,7 @@ public class JobController {
     private final JobService jobService;
 
     @GetMapping("api/v1/jobs")
-    public void getJobs(@RequestBody RequestDto requestDto) {
-        jobService.getJobByJobFunction(requestDto);
+    public String getJobs(@RequestBody RequestDto requestDto) {
+        return jobService.processUserRequest(requestDto);
     }
 }
