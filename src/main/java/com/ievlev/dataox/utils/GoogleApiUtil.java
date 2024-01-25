@@ -15,31 +15,28 @@ import com.google.api.services.sheets.v4.SheetsScopes;
 import com.google.api.services.sheets.v4.model.*;
 import com.ievlev.dataox.model.GoogleSheetModel;
 import com.ievlev.dataox.model.Job;
-import lombok.SneakyThrows;
 import org.springframework.stereotype.Component;
 
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.text.SimpleDateFormat;
-import java.util.*;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import java.security.GeneralSecurityException;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
 
 @Component
-// TODO: 25-Jan-24 наверное переименовать это в сервис (разобраться с иерархией)
 public class GoogleApiUtil {
     private static final String CREDENTIALS_FILE_PATH = "/credentials.json";
     private static final JsonFactory JSON_FACTORY = GsonFactory.getDefaultInstance();
     private static final List<String> SCOPES = Arrays.asList(SheetsScopes.SPREADSHEETS, SheetsScopes.DRIVE);
     private static final String TOKENS_DIRECTORY_PATH = "tokens/path";
-    private static final String APPLICATION_NAME = "Google Sheets API"; // TODO: 25-Jan-24 изучить на что влияет
+    private static final String APPLICATION_NAME = "Google Sheets API";
 
     private static Credential getCredentials(final NetHttpTransport HTTP_TRANSPORT)
             throws IOException {
         // Load client secrets.
-//        InputStream in = SheetsQuickstart.class.getResourceAsStream(CREDENTIALS_FILE_PATH); // TODO: 25-Jan-24 вот тут прям не факт, разобраться для чего это берется и откуда
         InputStream in = GoogleApiUtil.class.getResourceAsStream(CREDENTIALS_FILE_PATH);
         if (in == null) {
             throw new FileNotFoundException("Resource not found: " + CREDENTIALS_FILE_PATH);
@@ -57,15 +54,20 @@ public class GoogleApiUtil {
         return new AuthorizationCodeInstalledApp(flow, receiver).authorize("user");
     }
 
-    @SneakyThrows
+
     private Sheets getSheetService() {
-        NetHttpTransport HTTP_TRANSPORT = GoogleNetHttpTransport.newTrustedTransport(); // TODO: 25-Jan-24 сделать что-то с исключениями
-        return new Sheets.Builder(HTTP_TRANSPORT, JSON_FACTORY, getCredentials(HTTP_TRANSPORT))
-                .setApplicationName(APPLICATION_NAME)
-                .build();
+        try {
+            NetHttpTransport HTTP_TRANSPORT = GoogleNetHttpTransport.newTrustedTransport();
+            return new Sheets.Builder(HTTP_TRANSPORT, JSON_FACTORY, getCredentials(HTTP_TRANSPORT))
+                    .setApplicationName(APPLICATION_NAME)
+                    .build();
+        }catch (GeneralSecurityException | IOException e){
+            e.printStackTrace();
+        }
+        return null;
     }
 
-    @SneakyThrows
+
     public GoogleSheetModel createGoogleSheet() {
         GoogleSheetModel googleSheetModel = new GoogleSheetModel();
         Sheets service = getSheetService();
@@ -76,38 +78,26 @@ public class GoogleApiUtil {
         Sheet sheet = new Sheet().setProperties(sheetProperties);
         Spreadsheet spreadsheet = new Spreadsheet().setProperties(spreadsheetProperties).setSheets(Collections.singletonList(sheet));
         googleSheetModel.setService(service);
-        Spreadsheet createdResponse = service.spreadsheets().create(spreadsheet).execute();
+        Spreadsheet createdResponse = null;
+        try {
+            createdResponse = service.spreadsheets().create(spreadsheet).execute();
+        } catch (IOException ioException) {
+            ioException.printStackTrace();
+        }
         googleSheetModel.setUrlToGoogleSheet(createdResponse.getSpreadsheetUrl());
         googleSheetModel.setSpreadsheetId(createdResponse.getSpreadsheetId());
         return googleSheetModel;
     }
 
-    @SneakyThrows
-    public void addJobToSheet(Job job, int numberOfRaw, GoogleSheetModel googleSheetModel) {
-        ValueRange valueRange = new ValueRange().setValues(convertJobToListOfList(job)).setMajorDimension("COLUMNS");
-        googleSheetModel.getService().spreadsheets().values()
-                .update(googleSheetModel.getSpreadsheetId(), "A" + numberOfRaw, valueRange)
-                .setValueInputOption("RAW").execute();
-    }
 
-    private List<List<Object>> convertJobToListOfList(Job job) {
-        List<List<Object>> dataToBeInserted = new ArrayList<>();
-        dataToBeInserted.add(Collections.singletonList(job.getJobPageUrl()));
-        dataToBeInserted.add(Collections.singletonList(job.getPositionName()));
-        dataToBeInserted.add(Collections.singletonList(job.getOrganizationUrl()));
-        dataToBeInserted.add(Collections.singletonList(job.getLogoLink()));
-        dataToBeInserted.add(Collections.singletonList(job.getOrganizationTitle()));
-        dataToBeInserted.add(Collections.singletonList(job.getLaborFunction()));
-        dataToBeInserted.add(Collections.singletonList(job.getLocation()));
-        dataToBeInserted.add(Collections.singletonList(convertUnixDateToReadableDate(job.getPostedDate())));
-        dataToBeInserted.add(Collections.singletonList(job.getDescription()));
-        dataToBeInserted.add(Collections.singletonList(job.getTagNames()));
-        return dataToBeInserted;
-    }
-    // TODO: 25-Jan-24 возможно вынести такие методы в отдельный ютильный класс со статик методами
-    private String convertUnixDateToReadableDate(long unixDate){
-        Date date =  new Date(unixDate*1000L);
-        SimpleDateFormat dateFormat = new SimpleDateFormat("dd-MM-yyyy");
-        return dateFormat.format(date);
+    public void addJobToSheet(Job job, int numberOfRaw, GoogleSheetModel googleSheetModel) {
+        ValueRange valueRange = new ValueRange().setValues(JobConvertor.convertJobToListOfList(job)).setMajorDimension("COLUMNS");
+        try {
+            googleSheetModel.getService().spreadsheets().values()
+                    .update(googleSheetModel.getSpreadsheetId(), "A" + numberOfRaw, valueRange)
+                    .setValueInputOption("RAW").execute();
+        } catch (IOException ioException) {
+            ioException.printStackTrace();
+        }
     }
 }

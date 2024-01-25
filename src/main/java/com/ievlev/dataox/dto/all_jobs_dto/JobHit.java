@@ -7,7 +7,7 @@ import lombok.extern.jackson.Jacksonized;
 
 import java.util.List;
 
-@Jacksonized // TODO: 24-Jan-24 возможно удалить если не нужны (ментор их не писал) jacksonized, builder
+@Jacksonized
 @Builder
 @JsonIgnoreProperties(ignoreUnknown = true)
 @Data

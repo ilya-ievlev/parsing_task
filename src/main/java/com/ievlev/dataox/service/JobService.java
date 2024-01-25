@@ -10,7 +10,6 @@ import com.ievlev.dataox.model.TimeLimit;
 import com.ievlev.dataox.repository.JobRepository;
 import com.ievlev.dataox.utils.GoogleApiUtil;
 import lombok.RequiredArgsConstructor;
-import lombok.SneakyThrows;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
@@ -22,9 +21,14 @@ import org.springframework.web.util.UriComponentsBuilder;
 import javax.annotation.PostConstruct;
 import java.io.IOException;
 import java.net.URI;
+import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 @Service
 @RequiredArgsConstructor
@@ -36,50 +40,63 @@ public class JobService {
     private static final String NOT_FOUND = "NOT_FOUND";
     private static final int SEC_IN_DAY = 86_400;
 
+    private int lastRowInSheets;
+
 
     @PostConstruct
-    public void createGoogleSheet() { // TODO: 25-Jan-24 у меня после каждого запроса таблица перезаписывается. а должна дополняться. нужно сделать кеш последнего индекса, и печать следующего запроса делать опираясь на него
+    public void createGoogleSheet() {
         googleSheetModel = googleApiUtil.createGoogleSheet();
     }
 
 
-    // TODO: 24-Jan-24 в последнюю очередь сделать лимитер запросов чтобы не ддосить внешний сервер запросами
     public String processUserRequest(RequestDto requestDto) {
         SearchResultsWrapper firstSearchResultsWrapper = getResultsFromExternalApi(requestDto, 0);
-        if (firstSearchResultsWrapper.getResults().get(0).getHits().isEmpty()) {
-            // TODO: 23-Jan-24 вернуть NOT_FOUND и указать с каким запросом не найдено. или возвращать просто json и кодом ошибки что не найдено, а не писать это в таблицу
-        }
-        List<Job> jobListToWrite = process(firstSearchResultsWrapper, requestDto);
-        int numberOfPages = firstSearchResultsWrapper.getResults().get(0).getNbPages();
-        if (numberOfPages > 1) {
-            for (int i = 1; i < numberOfPages; i++) {
-                SearchResultsWrapper searchResultsWrapper = getResultsFromExternalApi(requestDto, i);
-                jobListToWrite.addAll(process(searchResultsWrapper, requestDto));
-            }
-        }
-        for (int i = 0; i < jobListToWrite.size(); i++) {
-            saveJobToDatabaseAndSheets(jobListToWrite.get(i), i + 1);
+        ConcurrentLinkedQueue<Job> jobListToWrite = process(firstSearchResultsWrapper, requestDto);
+//        int numberOfPages = firstSearchResultsWrapper.getResults().get(0).getNbPages();
+//        if (numberOfPages > 1) {
+//            for (int i = 1; i < numberOfPages; i++) {
+//                SearchResultsWrapper searchResultsWrapper = getResultsFromExternalApi(requestDto, i);
+//                jobListToWrite.addAll(process(searchResultsWrapper, requestDto));
+//            }
+//        }
+        for (Job job : jobListToWrite) {
+            lastRowInSheets++;
+            saveJobToDatabaseAndSheets(job, lastRowInSheets);
         }
         return googleSheetModel.getUrlToGoogleSheet();
     }
 
-    private List<Job> process(SearchResultsWrapper searchResultsWrapper, RequestDto requestDto) {
+    private ConcurrentLinkedQueue<Job> process(SearchResultsWrapper searchResultsWrapper, RequestDto requestDto) {
         List<JobHit> hitsSortedByTime = sortJobHitByDatePosted(requestDto, searchResultsWrapper.getResults().get(0).getHits());
         List<JobHit> hitsCheckedForRepetition = checkJobHitByIdInDB(hitsSortedByTime);
-        List<Job> processedJobsReadyToBeWritten = new ArrayList<>();
-        for (JobHit jobHit : hitsCheckedForRepetition) {// TODO: 25-Jan-24 потом перевести в многопоточность эту операцию
-            processedJobsReadyToBeWritten.add(createJobFromHit(jobHit));
+//        List<Job> processedJobsReadyToBeWritten = new ArrayList<>();
+//        for (JobHit jobHit : hitsCheckedForRepetition) {
+//            processedJobsReadyToBeWritten.add(createJobFromHit(jobHit));
+//        }
+        ConcurrentLinkedQueue<Job> processedJobsReadyToBeWritten = new ConcurrentLinkedQueue<>();
+        ExecutorService executor = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
+        for (JobHit jobHit : hitsCheckedForRepetition) {
+            executor.execute(() -> processedJobsReadyToBeWritten.add(createJobFromHit(jobHit)));
         }
+        executor.shutdown();
+        try {
+            if (!executor.awaitTermination(Long.MAX_VALUE, TimeUnit.NANOSECONDS)) {
+                System.err.println("Some tasks did not finish before the timeout.");
+                // Handle the case where tasks did not finish
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+
         return processedJobsReadyToBeWritten;
     }
 
-    // TODO: 24-Jan-24 сделать 2й вариант отправки запросов через okhttp (они так хотят)
     private SearchResultsWrapper getResultsFromExternalApi(RequestDto requestDto, int numberOfPage) {
         RestTemplate restTemplate = new RestTemplate();
         String baseUrl = "https://jobs.techstars.com/api/search/jobs";
         URI uri = UriComponentsBuilder.fromHttpUrl(baseUrl)
                 .queryParam("networkId", "89")
-                .queryParam("hitsPerPage", "1000") //1000 is a max limit provided by external api
+                .queryParam("hitsPerPage", "100") //1000 is a max limit provided by external api
                 .queryParam("page", String.valueOf(numberOfPage))
                 .queryParam("filters", getFilters(requestDto))
                 .queryParam("query", "")
@@ -91,19 +108,15 @@ public class JobService {
 
 
     private List<JobHit> checkJobHitByIdInDB(List<JobHit> jobList) {
-//        ConcurrentLinkedQueue<JobHit> jobConcurrentLinkedQueue = new ConcurrentLinkedQueue<>();
         List<JobHit> checkedJobHits = new ArrayList<>();
         for (JobHit job : jobList) {
             if (jobRepository.findById(Long.parseLong(job.getObjectID())).isEmpty()) {
-//                jobConcurrentLinkedQueue.add(job); // TODO: 25-Jan-24 потом в эти джобы в многопоточке доставляем все остальное, и потом в однопоточке пишем в базу и таблицу
                 checkedJobHits.add(job);
             }
         }
         return checkedJobHits;
     }
 
-    // TODO: 25-Jan-24 а если передадут например 2 одинаковых значения, и в другие фильтры тоже
-    @SneakyThrows // TODO: 25-Jan-24 ОЧЕНЬ ВРЕМЕННОЕ РЕШЕНИЕ, УБРАТЬ КАК МОЖНО БЫСТРЕЕ
     private List<JobHit> sortJobHitByDatePosted(RequestDto requestDto, List<JobHit> jobList) {
         List<String> requiredDates = requestDto.getDatesToShow();
         if (requiredDates.isEmpty()) {
@@ -113,15 +126,20 @@ public class JobService {
         List<TimeLimit> parsedDatesUnix = new ArrayList<>();
         for (String str : requiredDates) {
             TimeLimit timeLimit = new TimeLimit();
-            long parsedDate = dateFormat.parse(str).getTime() / 1000;
+            long parsedDate = 0;
+            try {
+                parsedDate = dateFormat.parse(str).getTime() / 1000;
+            } catch (ParseException e) {
+                e.printStackTrace();
+            }
             timeLimit.setStart(parsedDate);
             timeLimit.setEnd(parsedDate + SEC_IN_DAY);
-            parsedDatesUnix.add(timeLimit); // TODO: 25-Jan-24 завернуть в необработываемый ексепшен и отловить в ексепшен хендлере
+            parsedDatesUnix.add(timeLimit);
         }
 
         List<JobHit> sortedByTimeJobHits = new ArrayList<>();
 
-        for (JobHit job : jobList) { // TODO: 25-Jan-24 эти операции тоже можно делать в многопоточности вроде бы (не точно)
+        for (JobHit job : jobList) {
             long jobCreatedTime = job.getCreated_at();
             for (TimeLimit timeLimit : parsedDatesUnix) {
                 if (jobCreatedTime > timeLimit.getStart() && jobCreatedTime < timeLimit.getEnd()) {
@@ -150,8 +168,8 @@ public class JobService {
         if (!requestDto.getLocations().isEmpty()) {
             result.append(" AND (");
             for (int i = 0; i < requestDto.getLocations().size(); i++) {
-                result.append("searchable_locations:\"" + requestDto.getLocations().get(i) + "\"");
-                if (requestDto.getLocations().size() == 1 || i == requestDto.getWorkFunctions().size() - 1) { // TODO: 24-Jan-24 возможно можно оставить только 2 условие, если оно выполняется то 1 будет правдой всегда
+                result.append("searchable_locations:\"").append(requestDto.getLocations().get(i)).append("\"");
+                if (requestDto.getLocations().size() == 1 || i == requestDto.getWorkFunctions().size() - 1) {
                     break;
                 }
                 result.append(" OR ");
@@ -162,7 +180,7 @@ public class JobService {
     }
 
     private Job createJobFromHit(JobHit jobHit) {
-        Job job = new Job();// TODO: 23-Jan-24 вот это можно и распаралелить, чтобы ходить на внешние ресурсы и заполнять джобы для сохранения в базу
+        Job job = new Job();
         job.setPositionName(jobHit.getTitle());
         job.setOrganizationUrl(getUrlToOrganization(jobHit));
         job.setJobPageUrl("https://jobs.techstars.com/companies/playerdata/jobs/" + jobHit.getSlug());
@@ -170,14 +188,14 @@ public class JobService {
         job.setOrganizationTitle(jobHit.getOrganization().getName());
         job.setLaborFunction(getLaborFunction(jobHit));
         job.setLocation(jobHit.getLocations().toString());
-        job.setPostedDate(jobHit.getCreated_at()); //is is already in unix timestamp
+        job.setPostedDate(jobHit.getCreated_at()); //it is already in unix timestamp
         job.setDescription(getDescription(jobHit));
         job.setTagNames(getTagsFromJobHit(jobHit));
-        job.setVacancyIdFromSite(Long.parseLong(jobHit.getObjectID())); // TODO: 25-Jan-24 а что будет если тут парсед ексепшен вылетит
+        job.setVacancyIdFromSite(Long.parseLong(jobHit.getObjectID()));
         return job;
     }
 
-    private void saveJobToDatabaseAndSheets(Job job, int numberOfRawToSave) { // TODO: 25-Jan-24 а если одно что-то не вставится, то как откатить или остановить процесс?
+    private void saveJobToDatabaseAndSheets(Job job, int numberOfRawToSave) {
         jobRepository.save(job);
         googleApiUtil.addJobToSheet(job, numberOfRawToSave, googleSheetModel);
     }
@@ -190,7 +208,7 @@ public class JobService {
         return logoUrl;
     }
 
-    private String getTagsFromJobHit(JobHit jobHit) { // TODO: 24-Jan-24 убрать запятую если нет первых тегов, только последние
+    private String getTagsFromJobHit(JobHit jobHit) {
         int numberOfPeopleShort = jobHit.getOrganization().getHead_count();
         String stage = jobHit.getOrganization().getStage();
         List<String> industryTags = jobHit.getOrganization().getIndustry_tags();
@@ -252,15 +270,14 @@ public class JobService {
         try {
             document = Jsoup.connect(url).get();
         } catch (IOException ioException) {
-            ioException.printStackTrace(); // TODO: 23-Jan-24 сделать что-то с этим исключением, и еще с парой в других частях кода
-        } // TODO: 24-Jan-24 преверить чтобы документ не был нул
-//        Elements descriptionElements = document.select("#content > div.sc-beqWaB.eLTiFX > div.sc-dmqHEX.fPtgCq > div > div > div.sc-beqWaB.fmCCHr > div");
+            ioException.printStackTrace();
+        }
         Elements descriptionElements = document.select("div[data-testid=careerPage]");
         if (descriptionElements == null) {
-            descriptionElements = document.select("#content > div.sc-beqWaB.eFnOti > div.sc-dmqHEX.fPtgCq > div > div > div.sc-beqWaB.fmCCHr"); // TODO: 24-Jan-24 проверить единственная ли это ситуация когда невозможно подтянуть описание( стянуть максимально вакансий, отсортировать по описанию и посмотреть чтобы не было пустых) и написать комент почему и зачем именно так
+            return NOT_FOUND;
         }
-        return descriptionElements.text();// TODO: 23-Jan-24 по заданию нужно сохранить оригинальную разметку. как это сделать?
-    } // TODO: 24-Jan-24 возможно не .text() a .html(). он должен хранить и текст, и разметку
+        return descriptionElements.text();
+    }
 
     private String getUrlToOrganization(JobHit jobHit) {
         String url = "https://jobs.techstars.com/companies/playerdata/jobs/" + jobHit.getSlug();
@@ -277,7 +294,7 @@ public class JobService {
         return applyNowButton.attr("href");
     }
 
-    private String getLaborFunction(JobHit jobHit) { // TODO: 24-Jan-24 так же прописать что если не найдено тут и на всех полях, даже на названии вакансии
+    private String getLaborFunction(JobHit jobHit) {
         StringBuilder resultStringBuilder = new StringBuilder();
         List<JobFunctions> jobFunctionsList = jobHit.get_highlightResult().getJob_functions();
 //        for(JobFunctions jobFunctions: jobFunctionsList){
