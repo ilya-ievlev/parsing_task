@@ -11,7 +11,6 @@ import javax.validation.constraints.NotNull;
 @Table(name = "jobs")
 public class Job {
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Min(1)
     @Column(name = "vacancy_id_from_site")
     @NotNull

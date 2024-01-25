@@ -34,12 +34,11 @@ public class JobService {
     private final GoogleApiUtil googleApiUtil;
     private GoogleSheetModel googleSheetModel;
     private static final String NOT_FOUND = "NOT_FOUND";
-    private static final int MILISEC_IN_DAY = 86_400_000;
+    private static final int SEC_IN_DAY = 86_400;
 
 
     @PostConstruct
-    // TODO: 25-Jan-24 узнать у ментора. метод должен выполняться один раз при первом запросе и больше не выполняться
-    public void createGoogleSheet() {
+    public void createGoogleSheet() { // TODO: 25-Jan-24 у меня после каждого запроса таблица перезаписывается. а должна дополняться. нужно сделать кеш последнего индекса, и печать следующего запроса делать опираясь на него
         googleSheetModel = googleApiUtil.createGoogleSheet();
     }
 
@@ -116,7 +115,7 @@ public class JobService {
             TimeLimit timeLimit = new TimeLimit();
             long parsedDate = dateFormat.parse(str).getTime() / 1000;
             timeLimit.setStart(parsedDate);
-            timeLimit.setEnd(parsedDate + MILISEC_IN_DAY);
+            timeLimit.setEnd(parsedDate + SEC_IN_DAY);
             parsedDatesUnix.add(timeLimit); // TODO: 25-Jan-24 завернуть в необработываемый ексепшен и отловить в ексепшен хендлере
         }
 

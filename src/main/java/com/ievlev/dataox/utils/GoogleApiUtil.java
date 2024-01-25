@@ -22,10 +22,8 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.List;
+import java.text.SimpleDateFormat;
+import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -79,7 +77,6 @@ public class GoogleApiUtil {
         Spreadsheet spreadsheet = new Spreadsheet().setProperties(spreadsheetProperties).setSheets(Collections.singletonList(sheet));
         googleSheetModel.setService(service);
         Spreadsheet createdResponse = service.spreadsheets().create(spreadsheet).execute();
-//        googleSheetModel.setUrlToGoogleSheet(service.spreadsheets().create(spreadsheet).execute().getSpreadsheetUrl()); // TODO: 25-Jan-24 с каждым запросом возвращать ссылку в json ответе, потом просто модифицировать ту же таблицу
         googleSheetModel.setUrlToGoogleSheet(createdResponse.getSpreadsheetUrl());
         googleSheetModel.setSpreadsheetId(createdResponse.getSpreadsheetId());
         return googleSheetModel;
@@ -87,7 +84,7 @@ public class GoogleApiUtil {
 
     @SneakyThrows
     public void addJobToSheet(Job job, int numberOfRaw, GoogleSheetModel googleSheetModel) {
-        ValueRange valueRange = new ValueRange().setValues(convertJobToListOfList(job));
+        ValueRange valueRange = new ValueRange().setValues(convertJobToListOfList(job)).setMajorDimension("COLUMNS");
         googleSheetModel.getService().spreadsheets().values()
                 .update(googleSheetModel.getSpreadsheetId(), "A" + numberOfRaw, valueRange)
                 .setValueInputOption("RAW").execute();
@@ -98,11 +95,19 @@ public class GoogleApiUtil {
         dataToBeInserted.add(Collections.singletonList(job.getJobPageUrl()));
         dataToBeInserted.add(Collections.singletonList(job.getPositionName()));
         dataToBeInserted.add(Collections.singletonList(job.getOrganizationUrl()));
+        dataToBeInserted.add(Collections.singletonList(job.getLogoLink()));
+        dataToBeInserted.add(Collections.singletonList(job.getOrganizationTitle()));
         dataToBeInserted.add(Collections.singletonList(job.getLaborFunction()));
         dataToBeInserted.add(Collections.singletonList(job.getLocation()));
-        dataToBeInserted.add(Collections.singletonList(String.valueOf(job.getPostedDate()))); // TODO: 25-Jan-24 тут дату нужно перевести в читаемый вид для таблицы
+        dataToBeInserted.add(Collections.singletonList(convertUnixDateToReadableDate(job.getPostedDate())));
         dataToBeInserted.add(Collections.singletonList(job.getDescription()));
         dataToBeInserted.add(Collections.singletonList(job.getTagNames()));
         return dataToBeInserted;
+    }
+    // TODO: 25-Jan-24 возможно вынести такие методы в отдельный ютильный класс со статик методами
+    private String convertUnixDateToReadableDate(long unixDate){
+        Date date =  new Date(unixDate*1000L);
+        SimpleDateFormat dateFormat = new SimpleDateFormat("dd-MM-yyyy");
+        return dateFormat.format(date);
     }
 }
