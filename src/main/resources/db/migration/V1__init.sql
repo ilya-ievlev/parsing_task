@@ -1,6 +1,6 @@
 create table if not exists jobs
 (
-    id                   bigint not null primary key auto_increment unique,
+    vacancy_id_from_site bigint not null primary key auto_increment unique,
     position_name        varchar(500),
     job_page_url         varchar(500),
     organization_url     varchar(500),
@@ -10,6 +10,5 @@ create table if not exists jobs
     location             varchar(500),
     posted_date          bigint,
     description          TEXT,
-    tags_names           varchar(5000),
-    vacancy_id_from_site bigint unique
+    tags_names           varchar(5000)
 )

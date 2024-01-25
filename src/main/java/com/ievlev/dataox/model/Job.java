@@ -4,16 +4,18 @@ import lombok.Data;
 
 import javax.persistence.*;
 import javax.validation.constraints.Min;
+import javax.validation.constraints.NotNull;
 
 @Entity
 @Data
 @Table(name = "jobs")
 public class Job {
     @Id
-    @Column(name = "id")
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Min(1)
-    private Long id;
+    @Column(name = "vacancy_id_from_site")
+    @NotNull
+    private Long vacancyIdFromSite;
 
     @Column(name = "position_name")
     private String positionName;
@@ -45,15 +47,13 @@ public class Job {
     @Column(name = "tags_names")
     private String tagNames;
 
-    @Column(name = "vacancy_id_from_site")
-    private String vacancyIdFromSite;
+
 
     public Job() {
     }
 
-    public Job(Long id, String positionName, String jobPageUrl, String organizationUrl, String logoLink,
-               String organizationTitle, String laborFunction, String location, long postedDate, String description, String tagNames, String vacancyIdFromSite) {
-        this.id = id;
+    public Job(Long vacancyIdFromSite, String positionName, String jobPageUrl, String organizationUrl, String logoLink, String organizationTitle, String laborFunction, String location, long postedDate, String description, String tagNames) {
+        this.vacancyIdFromSite = vacancyIdFromSite;
         this.positionName = positionName;
         this.jobPageUrl = jobPageUrl;
         this.organizationUrl = organizationUrl;
@@ -64,21 +64,5 @@ public class Job {
         this.postedDate = postedDate;
         this.description = description;
         this.tagNames = tagNames;
-        this.vacancyIdFromSite = vacancyIdFromSite;
-    }
-
-    public Job(String positionName, String jobPageUrl, String organizationUrl, String logoLink, String organizationTitle, String laborFunction, String location,
-               long postedDate, String description, String tagNames, String vacancyIdFromSite) {
-        this.positionName = positionName;
-        this.jobPageUrl = jobPageUrl;
-        this.organizationUrl = organizationUrl;
-        this.logoLink = logoLink;
-        this.organizationTitle = organizationTitle;
-        this.laborFunction = laborFunction;
-        this.location = location;
-        this.postedDate = postedDate;
-        this.description = description;
-        this.tagNames = tagNames;
-        this.vacancyIdFromSite = vacancyIdFromSite;
     }
 }

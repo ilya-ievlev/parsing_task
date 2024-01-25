@@ -27,11 +27,12 @@
 .idea/**/dynamic.xml
 .idea/**/uiDesigner.xml
 .idea/**/dbnavigator.xml
-
+src/main/resources/client_secret_*
+src/main/resources/credentials.json
 # Gradle
 .idea/**/gradle.xml
 .idea/**/libraries
-
+tokens/*
 # Gradle and Maven with auto-import
 # When using Gradle or Maven with auto-import, you should exclude module files,
 # since they will be recreated, and may cause churn.  Uncomment if using
