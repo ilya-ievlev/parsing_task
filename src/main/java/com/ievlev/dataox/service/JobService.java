@@ -5,7 +5,7 @@ import com.ievlev.dataox.dto.all_jobs_dto.JobHit;
 import com.ievlev.dataox.dto.all_jobs_dto.SearchResultsWrapper;
 import com.ievlev.dataox.mapper.JobHitToJobMapper;
 import com.ievlev.dataox.model.Job;
-import com.ievlev.dataox.api_client.ExternalApiProcessor;
+import com.ievlev.dataox.api_client.TechstarsApiClient;
 import com.ievlev.dataox.repository.JobRepository;
 import com.ievlev.dataox.utils.JobUtil;
 import lombok.RequiredArgsConstructor;
@@ -23,7 +23,7 @@ import java.util.concurrent.TimeUnit;
 @RequiredArgsConstructor
 public class JobService {
     private final JobHitToJobMapper jobHitToJobMapper;
-    private final ExternalApiProcessor externalApiProcessor;
+    private final TechstarsApiClient techstarsApiClient;
     private final JobRepository jobRepository;
     private final GoogleApiService googleApiService;
 
@@ -31,7 +31,7 @@ public class JobService {
 
     public void processUserRequest(RequestDto requestDto) {
         JobUtil.validateRequestDto(requestDto);
-        SearchResultsWrapper firstSearchResultsWrapper = externalApiProcessor.getJobsFromExternalApi(requestDto, 0);
+        SearchResultsWrapper firstSearchResultsWrapper = techstarsApiClient.getJobsFromExternalApi(requestDto, 0);
         ConcurrentLinkedQueue<Job> jobListToWrite = process(firstSearchResultsWrapper, requestDto);
 //        int numberOfPages = firstSearchResultsWrapper.getResults().get(0).getNbPages();
 //        if (numberOfPages > 1) {

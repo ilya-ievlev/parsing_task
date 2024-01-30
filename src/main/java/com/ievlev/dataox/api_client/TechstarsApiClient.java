@@ -11,7 +11,7 @@ import java.net.URI;
 
 @Component
 @AllArgsConstructor
-public class ExternalApiProcessor {
+public class TechstarsApiClient {
     private final RestTemplate restTemplate;
 
     public SearchResultsWrapper getJobsFromExternalApi(RequestDto requestDto, int numberOfPage) {
