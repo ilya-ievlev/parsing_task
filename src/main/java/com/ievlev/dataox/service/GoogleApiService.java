@@ -1,4 +1,4 @@
-package com.ievlev.dataox.utils;
+package com.ievlev.dataox.service;
 
 import com.google.api.client.auth.oauth2.Credential;
 import com.google.api.client.extensions.java6.auth.oauth2.AuthorizationCodeInstalledApp;
@@ -16,7 +16,8 @@ import com.google.api.services.sheets.v4.model.*;
 import com.ievlev.dataox.exception.GoogleSheetException;
 import com.ievlev.dataox.model.GoogleSheetModel;
 import com.ievlev.dataox.model.Job;
-import org.springframework.stereotype.Component;
+import com.ievlev.dataox.utils.JobConvertor;
+import org.springframework.stereotype.Service;
 
 import java.io.FileNotFoundException;
 import java.io.IOException;
@@ -27,18 +28,19 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
-@Component
-public class GoogleApiUtil {
+@Service
+public class GoogleApiService {
     private static final String CREDENTIALS_FILE_PATH = "/credentials.json";
     private static final JsonFactory JSON_FACTORY = GsonFactory.getDefaultInstance();
     private static final List<String> SCOPES = Arrays.asList(SheetsScopes.SPREADSHEETS, SheetsScopes.DRIVE);
     private static final String TOKENS_DIRECTORY_PATH = "tokens/path";
     private static final String APPLICATION_NAME = "Google Sheets API";
+    private GoogleSheetModel googleSheetModel;
 
     private static Credential getCredentials(final NetHttpTransport HTTP_TRANSPORT)
             throws IOException {
         // Load client secrets.
-        InputStream in = GoogleApiUtil.class.getResourceAsStream(CREDENTIALS_FILE_PATH);
+        InputStream in = GoogleApiService.class.getResourceAsStream(CREDENTIALS_FILE_PATH);
         if (in == null) {
             throw new FileNotFoundException("Resource not found: " + CREDENTIALS_FILE_PATH);
         }
@@ -62,13 +64,13 @@ public class GoogleApiUtil {
             return new Sheets.Builder(HTTP_TRANSPORT, JSON_FACTORY, getCredentials(HTTP_TRANSPORT))
                     .setApplicationName(APPLICATION_NAME)
                     .build();
-        }catch (GeneralSecurityException | IOException e){
+        } catch (GeneralSecurityException | IOException e) {
             throw new GoogleSheetException(e);
         }
     }
 
 
-    public GoogleSheetModel createGoogleSheet() {
+    public String createGoogleSheet() {
         GoogleSheetModel googleSheetModel = new GoogleSheetModel();
         Sheets service = getSheetService();
         SpreadsheetProperties spreadsheetProperties = new SpreadsheetProperties();
@@ -86,12 +88,13 @@ public class GoogleApiUtil {
         }
         googleSheetModel.setUrlToGoogleSheet(createdResponse.getSpreadsheetUrl());
         googleSheetModel.setSpreadsheetId(createdResponse.getSpreadsheetId());
-        return googleSheetModel;
+        this.googleSheetModel = googleSheetModel;
+        return googleSheetModel.getUrlToGoogleSheet();
     }
 
 
-    public void addJobToSheet(Job job, int numberOfRaw, GoogleSheetModel googleSheetModel) {
-        ValueRange valueRange = new ValueRange().setValues(JobConvertor.convertJobToListOfList(job)).setMajorDimension("COLUMNS");
+    public void addJobToSheet(Job job, int numberOfRaw) {
+        ValueRange valueRange = new ValueRange().setValues(JobConvertor.convertJobToListOfListOfObject(job)).setMajorDimension("COLUMNS");
         try {
             googleSheetModel.getService().spreadsheets().values()
                     .update(googleSheetModel.getSpreadsheetId(), "A" + numberOfRaw, valueRange)
@@ -99,5 +102,17 @@ public class GoogleApiUtil {
         } catch (IOException ioException) {
             throw new GoogleSheetException(ioException);
         }
+    }
+
+    public GoogleSheetModel getGoogleSheetModel() {
+        return googleSheetModel;
+    }
+
+    public String getGoogleSheetUrl() {
+        if(googleSheetModel!=null){
+            return googleSheetModel.getUrlToGoogleSheet();
+        }
+        // TODO: 30-Jan-24 спросить что возвращать тут, исключение или что-то другое по типу строки "не найдено"
+        return "table not found. you can create a new one or specify an existing one";
     }
 }

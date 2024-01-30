@@ -9,12 +9,13 @@ import java.util.Date;
 import java.util.List;
 
 public class JobConvertor {
-    private static String convertUnixDateToReadableDate(long unixDate){
-        Date date =  new Date(unixDate*1000L);
+    private static String convertUnixDateToReadableDate(long unixDate) {
+        Date date = new Date(unixDate * 1000L);
         SimpleDateFormat dateFormat = new SimpleDateFormat("dd-MM-yyyy");
         return dateFormat.format(date);
     }
-    public static List<List<Object>> convertJobToListOfList(Job job) {
+
+    public static List<List<Object>> convertJobToListOfListOfObject(Job job) {
         List<List<Object>> dataToBeInserted = new ArrayList<>();
         dataToBeInserted.add(Collections.singletonList(job.getJobPageUrl()));
         dataToBeInserted.add(Collections.singletonList(job.getPositionName()));

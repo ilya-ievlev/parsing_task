@@ -1,6 +1,6 @@
 package com.ievlev.dataox.exception;
 
-public class GoogleSheetException extends RuntimeException{
+public class GoogleSheetException extends RuntimeException {
     public GoogleSheetException() {
     }
 

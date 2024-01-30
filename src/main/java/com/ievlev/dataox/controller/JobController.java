@@ -13,7 +13,7 @@ public class JobController {
     private final JobService jobService;
 
     @GetMapping("api/v1/jobs")
-    public String getJobs(@RequestBody RequestDto requestDto) {
-        return jobService.processUserRequest(requestDto);
+    public void getJobs(@RequestBody RequestDto requestDto) { // TODO: 30-Jan-24 возможно возвращать что-то даже при положительном исходе
+        jobService.processUserRequest(requestDto);
     }
 }

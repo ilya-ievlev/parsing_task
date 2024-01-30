@@ -8,5 +8,5 @@ import java.util.List;
 @Data
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class HighlightResult {
-private List<JobFunctions> job_functions;
+    private List<JobFunctions> job_functions;
 }

@@ -2,7 +2,10 @@ package com.ievlev.dataox.model;
 
 import lombok.Data;
 
-import javax.persistence.*;
+import javax.persistence.Column;
+import javax.persistence.Entity;
+import javax.persistence.Id;
+import javax.persistence.Table;
 import javax.validation.constraints.Min;
 import javax.validation.constraints.NotNull;
 
@@ -45,7 +48,6 @@ public class Job {
 
     @Column(name = "tags_names")
     private String tagNames;
-
 
 
     public Job() {

@@ -1,6 +1,6 @@
 package com.ievlev.dataox.exception;
 
-public class IncorrectConnectionException extends RuntimeException{
+public class IncorrectConnectionException extends RuntimeException {
     public IncorrectConnectionException() {
     }
 
